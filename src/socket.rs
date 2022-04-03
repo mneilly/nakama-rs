@@ -16,7 +16,7 @@ use crate::api::{ApiChannelMessage, ApiNotification, ApiNotificationList, ApiRpc
 use crate::matchmaker::Matchmaker;
 use crate::session::Session;
 use async_trait::async_trait;
-use nanoserde::{DeJson, DeJsonErr, DeJsonState, SerJson};
+use nanoserde::{DeJson, DeJsonErr, DeJsonState, SerJson, SerJsonState};
 use std::collections::HashMap;
 use std::error;
 use std::str::Chars;
@@ -143,10 +143,10 @@ pub struct Error {
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
 pub struct Match {
     pub match_id: String,
-    pub authoritative: bool,
-    pub label: String,
-    pub size: i32,
-    pub presences: Vec<UserPresence>,
+    pub authoritative: Option<bool>,
+    pub label: Option<String>,
+    pub size: Option<i32>,
+    pub presences: Option<Vec<UserPresence>>,
     #[nserde(rename = "self")]
     pub _self: UserPresence,
 }
@@ -155,21 +155,76 @@ pub struct Match {
 pub struct MatchCreate {}
 
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
+pub struct MatchDataProxy {
+    pub match_id: String,
+    pub presence: UserPresence,
+    pub op_code: String,
+    pub data: String,
+    pub reliable: Option<bool>,
+}
+
+#[derive(SerJson, Debug, Clone, Default)]
 pub struct MatchData {
     pub match_id: String,
     pub presence: UserPresence,
     pub op_code: i64,
     pub data: Vec<u8>,
-    pub reliable: bool,
+    pub reliable: Option<bool>,
+}
+
+impl DeJson for MatchData {
+    fn de_json(state: &mut DeJsonState, input: &mut Chars) -> Result<Self, DeJsonErr> {
+        let proxy: MatchDataProxy = DeJson::de_json(state, input)?;
+        let data = base64::decode(proxy.data);
+        match data {
+            Ok(data) => Ok(MatchData {
+                match_id: proxy.match_id,
+                presence: proxy.presence,
+                op_code: proxy.op_code.parse().unwrap(),
+                reliable: proxy.reliable,
+                data,
+            }),
+            Err(err) => {
+                Err(nanoserde::DeJsonErr {
+                    msg: err.to_string(),
+                    // TODO: Correct lines
+                    col: 0,
+                    line: 0,
+                })
+            }
+        }
+    }
 }
 
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
+pub struct MatchDataSendProxy {
+    pub match_id: String,
+    pub op_code: String,
+    pub data: String,
+    pub presences: Vec<UserPresence>,
+    pub reliable: bool,
+}
+
+#[derive(DeJson, Debug, Clone, Default)]
 pub struct MatchDataSend {
     pub match_id: String,
     pub op_code: i64,
     pub data: Vec<u8>,
     pub presences: Vec<UserPresence>,
     pub reliable: bool,
+}
+
+impl SerJson for MatchDataSend {
+    fn ser_json(&self, d: usize, s: &mut SerJsonState) {
+        let proxy = MatchDataSendProxy {
+            match_id: self.match_id.to_owned(),
+            op_code: self.op_code.to_string(),
+            data: base64::encode(self.data.to_owned()),
+            presences: self.presences.to_owned(),
+            reliable: self.reliable,
+        };
+        proxy.ser_json(d, s);
+    }
 }
 
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
@@ -205,9 +260,9 @@ pub struct MatchmakerAdd {
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
 pub struct MatchmakerUser {
     pub presence: UserPresence,
-    pub party_id: String,
-    pub string_properties: HashMap<String, String>,
-    pub numeric_properties: HashMap<String, f64>,
+    pub party_id: Option<String>,
+    pub string_properties: Option<HashMap<String, String>>,
+    pub numeric_properties: Option<HashMap<String, f64>>,
 }
 
 #[derive(DeJson, SerJson, Debug, Clone, Default)]
