@@ -701,13 +701,19 @@ impl<A: SocketAdapter + Send> Socket for WebSocket<A> {
     /// # use nakama_rs::test_helpers::*;
     /// # use std::collections::HashMap;
     /// # run_in_socket_example(async move |client, session, socket| {
-    /// socket.connect(&session, true, -1).await;
+    /// socket.connect(&session, "localhost", 7350, true, -1).await;
     /// # Ok(())
     /// # });
     /// ```
-    async fn connect(&self, session: &Session, appear_online: bool, connect_timeout: i32) {
-        let ws_url = "ws://127.0.0.1";
-        let port = 7350;
+    async fn connect(
+        &self,
+        session: &Session,
+        server: &str,
+        port: u32,
+        appear_online: bool,
+        connect_timeout: i32
+    ) {
+        let ws_url = format!("ws://{server}");
 
         let ws_addr = format!(
             "{}:{}/ws?lang=en&status={}&token={}",
